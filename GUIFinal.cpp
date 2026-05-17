@@ -43,10 +43,10 @@ typedef struct AppData {
 void initialize(AppData *data_ptr);
 void handleEvent(SDL_Event *event, AppData *data_ptr);
 void render(SDL_Renderer *renderer, AppData *data_ptr);
-//void populateDirectory(SDL_Renderer *renderer, AppData *data_ptr);
+//void populateDirectory(SDL_Renderer *renderer, AppData *data_ptr);    // unneeded
 void listProcesses(std::vector<ProcessEntry> &processes);
-//void clearGFiles(std::vector<GFile*>& graphic_entries);
-//bool compareFileEntries(const FileEntry *a, const FileEntry *b);
+//void clearGFiles(std::vector<GFile*>& graphic_entries);       // unneeded
+//bool compareFileEntries(const FileEntry *a, const FileEntry *b);      // unneeded
 bool pointInRect(int x, int y, SDL_Rect& rect);
 void quit(AppData *data_ptr);
 void update(AppData *data_ptr);
@@ -54,32 +54,33 @@ void drawText(SDL_Renderer *renderer, TTF_Font *font, const std::string& text, i
 
 int main(int argc, char *argv[])
 {
-    // File browser starts at user's home directory
-    std::filesystem::path home(getenv("HOME"));
-    std::cout << "HOME: " << home << std::endl;
-
     // Initialize SDL2 (including image and font loaders)
     SDL_Init(SDL_INIT_VIDEO);
-    IMG_Init(IMG_INIT_PNG);
+    //IMG_Init(IMG_INIT_PNG);       // unneeded, not using images
     TTF_Init();
 
     // Create window and renderer
-    SDL_Renderer *renderer;
-    SDL_Window *window;
-    SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, 0, &window, &renderer);
+    SDL_Window *window = SDL_CreateWindow(SDL_WindowCentered, SDL_WindowCentered, WIDTH, HEIGHT, 0);
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RendererAccelerated);
 
     // Initialize file browser application
     AppData data;
-    data.current_directory = home;
-    initialize(renderer, &data);
+    //data.current_directory = home;    // unneeded, not dealing with directories
+    initialize(&data);
 
     // Perform render loop
     SDL_Event event;
+    event.type = 0;
+
     do
     {
+        update(&data);
         render(renderer, &data);
-        SDL_WaitEvent(&event);
-        handleEvent(&event, renderer, &data);
+        if (SDL_WaitEvent(&event, (1000/60)))
+        {
+            handleEvent(&event, &data);
+        }
+
     } while (event.type != SDL_QUIT);
 
     // Clean up
@@ -87,7 +88,7 @@ int main(int argc, char *argv[])
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_Quit();
-    IMG_Quit();
+    //IMG_Quit();       // unneeded, not dealing with images
     SDL_Quit();
 
     return 0;
@@ -326,15 +327,15 @@ void quit(AppData *data_ptr)
     // clearGFiles(data_ptr->graphic_entries);
     // SDL_DestroyTexture(data_ptr->directory_image);
     // SDL_DestroyTexture(data_ptr->file_image);
-    TTF_CloseFont(data_ptr->font);
+    TTF_CloseFont(data_ptr->font);      // no files or textures needed for this
 }
 
 void update(Appdata *data_ptr)
 {
     Uint32 current_time = SDL_GetTicks();
-    if (current_time - data_ptr->last_update_time >= 500)
+    if (current_time - data_ptr->last_update_time >= 500)   // if >= 500 ticks since last update, update
     {
-        listProcesses(pata_ptr->processes);
-        data_ptr->last_update_time = current_time;
+        listProcesses(data_ptr->processes);     // relist (refresh) processes
+        data_ptr->last_update_time = current_time;      // update last update time to now
     }
 }
