@@ -10,6 +10,7 @@
 #include <SDL2/SDL_ttf.h>
 #include <fstream>
 #include <sstream>
+#include <cctype>
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -60,8 +61,8 @@ int main(int argc, char *argv[])
     TTF_Init();
 
     // Create window and renderer
-    SDL_Window *window = SDL_CreateWindow(SDL_WindowCentered, SDL_WindowCentered, WIDTH, HEIGHT, 0);
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RendererAccelerated);
+    SDL_Window *window = SDL_CreateWindow(SDL_WindowCentered, SDL_WindowCentered, WIDTH, HEIGHT, 0);    // outlines window
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RendererAccelerated);       // initializes renderer
 
     // Initialize file browser application
     AppData data;
@@ -76,7 +77,7 @@ int main(int argc, char *argv[])
     {
         update(&data);
         render(renderer, &data);
-        if (SDL_WaitEvent(&event, (1000/60)))
+        if (SDL_WaitEventTimeout(&event, (1000/60)))       // ~60 Hz refresh, instead of waiting for event
         {
             handleEvent(&event, &data);
         }
@@ -102,8 +103,8 @@ void initialize(AppData *data_ptr)
     data_ptr->sort_by_memory = true;
     data_ptr->scroll_offset = 0;
     data_ptr->last_update_time = 0;
-    data_ptr->sortMemoryButton = {40, 70, 180, 40};
-    data_ptr->sortPidButton = {240, 70, 140, 40};
+    data_ptr->sortMemoryButton = {40, 70, 180, 40};     // sort by memory button pos
+    data_ptr->sortPidButton = {240, 70, 140, 40};       // sort by PID button pos
 
     listProcesses(data_ptr->processes);
 
@@ -122,11 +123,13 @@ void initialize(AppData *data_ptr)
 
 void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
 {
+    // if left click
     if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT)
     {
-        int x = event->button.x;
-        int y = event->button.y;
+        int x = event->button.x;    // checks cursor x position
+        int y = event->button.y;    // checks sursor y position
 
+        // sort by memory button is clicked
         if (pointInRect(x, y, data->sortMemoryButton))
         {
             data_ptr->sort_by_memory = true;
@@ -134,9 +137,10 @@ void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
             listProcesses(data_ptr->processes);
         }
 
+        // sort by PID button is clicked
         else if (pointInRect(x, y, data->sortPidButton))
         {
-            data_ptr->sort_by_memory = false;
+            data_ptr->sort_by_memory = false;   // only other sorting mode
             data_ptr->scroll_offset = 0;
             listProcesses(data_ptr->processes);
         }
@@ -174,10 +178,10 @@ void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
 
     else if (event->type == SDL_MOUSEWHEEL)
     {
-        data_ptr->scroll_offset -= event->wheel.y * 25;
+        data_ptr->scroll_offset -= 25 * event->wheel.y;
         if (data_ptr->scroll_offset < 0)
         {
-            data_ptr->scroll_offset = 0;
+            data_ptr->scroll_offset = 0;    // can't scroll a "negative" amount
         }
 
         // for (int i = 0; i < data_ptr->graphic_entries.size(); i++)
@@ -195,18 +199,18 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
     SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
     SDL_RenderClear(renderer);
 
-    // Draw file entries
-    for (int i = 0; i < data_ptr->graphic_entries.size(); i++)
-    {
-        SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->icon, NULL,
-            &(data_ptr->graphic_entries[i]->icon_pos));
+    // // Draw file entries
+    // for (int i = 0; i < data_ptr->graphic_entries.size(); i++)
+    // {
+    //     SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->icon, NULL,
+    //         &(data_ptr->graphic_entries[i]->icon_pos));
 
-        SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->name, NULL,
-            &(data_ptr->graphic_entries[i]->name_pos));
+    //     SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->name, NULL,
+    //         &(data_ptr->graphic_entries[i]->name_pos));
 
-        SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->size, NULL,
-            &(data_ptr->graphic_entries[i]->size_pos));
-    }
+    //     SDL_RenderCopy(renderer, data_ptr->graphic_entries[i]->size, NULL,
+    //         &(data_ptr->graphic_entries[i]->size_pos));
+    // }
 
     // Draw solid rectangle (teal)
     //rect.x = 440;
@@ -273,11 +277,57 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
     // Clear out old data
     processes.clear();
 
+    // Loops through all folders in /proc
     for (const auto& entry : std::filesystem::directory_iterator("/proc"))
     {
-    //     const std::filesystem::directory_entry& entry = *it;
+        if (!entry.is_directory()) continue;    // skips non-directories
+    //     const std::filesystem::directory_entry& entry = *it;     // again, not listing specific directories
+        std::string folder_name = entry.path().filename().string();
+        bool ispidFolder = true;
 
-    //     std::string entry_name = entry.path().filename().string();
+        // iterates through each character in folder name to see if they;re all digits
+        for (char c : folder_name)
+        {
+            if (!std::isdigit(c))
+            {
+                ispidFolder = false;     // not a PID folder if name contains non-digits
+                break;
+            }
+        }
+
+        if (!ispidFolder) continue;      // skips non-process folders
+
+        int pid = std::stoi(folder_name);       // converts folder name into integer PID
+        std::ifstream status_file(entry.path() / "status");     // opens /proc/PID/status file
+
+        if (!status_file) continue;     // skips non-status files
+
+        ProcessEntry proc;  // default process object
+        proc.pid = pid;     // default pid
+        proc.name = "[]";   // name placeholder
+        proc.memory = 0;    // memory usage in KB
+
+        std::string line;
+
+        // reads file line by line
+        while (std::getline(status_file, line))
+        {
+            // finds process names
+            if (line.rfind("Name:", 0) == 0)
+            {
+                proc.name = line.substr(6);     // captures idx 6 onwards to account for "Name:\t"
+            }
+
+            // finds RAM usage for each process
+            else if (line.rfind("VmRSS:", 0) == 0)
+            {
+                std::stringstream ss(line.substr(6));
+                ss >> proc.memory_kb;
+            }
+        }
+
+        processes.push_back(proc);      // adds process to be displayed
+
     //     if (entry_name[0] != '.')
     //     {
     //         FileEntry *file_entry = new FileEntry();
@@ -295,6 +345,7 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
     //     }
     // }
     // std::sort(entries.begin(), entries.end(), compareFileEntries);
+    }
 }
 
 // bool compareFileEntries(const FileEntry *a, const FileEntry *b)
@@ -310,7 +361,7 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
 //         SDL_DestroyTexture(graphic_entries[i]->size);
 //     }
 //     graphic_entries.clear();
-// }
+
 
 bool pointInRect(int x, int y, SDL_Rect& rect)
 {
@@ -338,4 +389,21 @@ void update(Appdata *data_ptr)
         listProcesses(data_ptr->processes);     // relist (refresh) processes
         data_ptr->last_update_time = current_time;      // update last update time to now
     }
+}
+
+void drawText(SDL_Renderer *renderer, TTF_Font *font, const std::string& text, int x, int y, SDL_Color color)
+{
+    SDL_Surface *surface = TTF_RenderText_Solid(font, text.c_str(), color);     // creates surface with rendered text
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);     // converts the surface we just made into a renderable texture
+
+    SDL_Rect dest;
+
+    dest.x = x;
+    dest.y = y;
+    dest.w = surface->w;    // sets width to text size
+    dest.h = surface->h;    // sets height to text size
+
+    SDL_FreeSurface(surface);       // clears surface, takes load off
+    SDL_RenderCopy(renderer, texture, nullptr, &dest);      // draws texture to screen
+    SDL_DestroyTexture(texture);    // texture is drawn, destory that bish
 }
