@@ -230,7 +230,7 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
     drawText(renderer, data_ptr->font, "Sort by PID", 365, 80, white);      // sort by PID button text
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);    // initializes renderer color
-    SDL_RenderDrawLine(renderer, 40, 130, 850, 130);    // draws separating line
+    SDL_RenderDrawLine(renderer, 40, 130, 860, 130);    // draws separating line
 
     drawText(renderer, data_ptr->font, "PID", 50, 145, yellow);      // PID column
     drawText(renderer, data_ptr->font, "Process Name", 150, 145, yellow);    // proc name column
@@ -245,7 +245,7 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
         Uint8 g = (1 - t) * orange.g + t * yellow.g;
 
         SDL_SetRenderDrawColor(renderer, r, g, 0, 255);
-        SDL_RenderDrawLine(renderer, 720, 40 + y, 800, 40 + y);
+        SDL_RenderDrawLine(renderer, 780, 40 + y, 860, 40 + y);
     }
 
     int Ystart = 180 - data_ptr->scroll_offset;     // y starting position
@@ -499,7 +499,7 @@ void update(AppData *data_ptr)
 
 void drawText(SDL_Renderer *renderer, TTF_Font *font, const std::string& text, int x, int y, SDL_Color color)
 {
-    SDL_Surface *surface = TTF_RenderText_Solid(font, text.c_str(), color);     // creates surface with rendered text
+    SDL_Surface *surface = TTF_RenderText_Blended(font, text.c_str(), color);     // creates surface with rendered text
     SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);     // converts the surface we just made into a renderable texture
 
     SDL_Rect dest;
