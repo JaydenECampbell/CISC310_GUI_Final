@@ -11,8 +11,9 @@
 #include <fstream>
 #include <sstream>
 #include <cctype>
+#include <cmath>
 
-#define WIDTH 800
+#define WIDTH 900
 #define HEIGHT 600
 
 typedef struct ProcEntry {
@@ -32,7 +33,7 @@ typedef struct ProcEntry {
 
 typedef struct AppData {
     TTF_Font *font;
-    std::vector<ProcessEntry> processes;
+    std::vector<ProcEntry> processes;
     bool sort_by_memory;
     int scroll_offset;
     Uint32 last_update;
@@ -45,7 +46,7 @@ void initialize(AppData *data_ptr);
 void handleEvent(SDL_Event *event, AppData *data_ptr);
 void render(SDL_Renderer *renderer, AppData *data_ptr);
 //void populateDirectory(SDL_Renderer *renderer, AppData *data_ptr);    // unneeded
-void listProcesses(std::vector<ProcessEntry> &processes);
+void listProcesses(std::vector<ProcEntry> &processes, bool sort_by_memory);
 //void clearGFiles(std::vector<GFile*>& graphic_entries);       // unneeded
 //bool compareFileEntries(const FileEntry *a, const FileEntry *b);      // unneeded
 bool pointInRect(int x, int y, SDL_Rect& rect);
@@ -61,8 +62,8 @@ int main(int argc, char *argv[])
     TTF_Init();
 
     // Create window and renderer
-    SDL_Window *window = SDL_CreateWindow(SDL_WindowCentered, SDL_WindowCentered, WIDTH, HEIGHT, 0);    // outlines window
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RendererAccelerated);       // initializes renderer
+    SDL_Window *window = SDL_CreateWindow("Task Manager", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, 0);    // outlines window
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);       // initializes renderer
 
     // Initialize file browser application
     AppData data;
@@ -102,11 +103,11 @@ void initialize(AppData *data_ptr)
 
     data_ptr->sort_by_memory = true;
     data_ptr->scroll_offset = 0;
-    data_ptr->last_update_time = 0;
-    data_ptr->sortMemoryButton = {40, 70, 180, 40};     // sort by memory button pos
-    data_ptr->sortPidButton = {240, 70, 140, 40};       // sort by PID button pos
+    data_ptr->last_update = 0;
+    data_ptr->sortMemoryButton = {40, 80, 280, 40};     // sort by memory button pos
+    data_ptr->sortPidButton = {350, 80, 160, 40};       // sort by PID button pos
 
-    listProcesses(data_ptr->processes);
+    listProcesses(data_ptr->processes, data_ptr->sort_by_memory);     // initial process listing
 
     // // Load images and create texture
     // SDL_Surface *dir_surf = IMG_Load("resrc/images/directory_icon.png");
@@ -121,7 +122,7 @@ void initialize(AppData *data_ptr)
     // populateDirectory(renderer, data_ptr);
 }
 
-void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
+void handleEvent(SDL_Event *event, AppData *data_ptr)
 {
     // if left click
     if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT)
@@ -130,19 +131,19 @@ void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
         int y = event->button.y;    // checks sursor y position
 
         // sort by memory button is clicked
-        if (pointInRect(x, y, data->sortMemoryButton))
+        if (pointInRect(x, y, data_ptr->sortMemoryButton))
         {
             data_ptr->sort_by_memory = true;
             data_ptr->scroll_offset = 0;
-            listProcesses(data_ptr->processes);
+            listProcesses(data_ptr->processes, data_ptr->sort_by_memory);
         }
 
         // sort by PID button is clicked
-        else if (pointInRect(x, y, data->sortPidButton))
+        else if (pointInRect(x, y, data_ptr->sortPidButton))
         {
             data_ptr->sort_by_memory = false;   // only other sorting mode
             data_ptr->scroll_offset = 0;
-            listProcesses(data_ptr->processes);
+            listProcesses(data_ptr->processes, data_ptr->sort_by_memory);
         }
 
         // for (int i = 0; i < data_ptr->graphic_entries.size(); i++)
@@ -195,9 +196,19 @@ void handleEvent(SDL_Event *event, SDL_Renderer *renderer, AppData *data_ptr)
 
 void render(SDL_Renderer *renderer, AppData *data_ptr)
 {
-    // Erase prior frame content (to light gray)
-    SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
-    SDL_RenderClear(renderer);
+    // this is to make a blue (top) to purple (bottom) gradient background
+    for (int y = 0; y < HEIGHT; y++)
+    {
+        float t = (float)y / HEIGHT;
+
+        Uint8 r = (1 - t) * 0 + t * 255;     // red goes from 0 to 255
+        Uint8 b = (1 - t) * 255 + t * 255;   // blue stays at 255
+
+        SDL_SetRenderDrawColor(renderer, r, 0, b, 255);
+        SDL_RenderDrawLine(renderer, 0, y, WIDTH, y);
+    }
+
+    //SDL_RenderClear(renderer);
 
     SDL_Color black = {0, 0, 0, 255};
     SDL_Color white = {255, 255, 255, 255};
@@ -205,61 +216,75 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
     SDL_Color lightGray = {200, 200, 200, 255};
     SDL_Color blue = {0, 0, 255, 255};
     SDL_Color purple = {128, 0 ,255, 255};
+    SDL_Color yellow = {255, 255, 0, 255};
+    SDL_Color orange = {255, 128, 0, 255};
 
-    drawText(renderer, data_ptr->font, "Task Manager", 40, 25, black);
+    drawText(renderer, data_ptr->font, "Task Manager", 40, 25, yellow);
 
-    SDL_SetRenderDrawColor(renderer, gray);    // initializes renderer color
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);    // initializes renderer color
     SDL_RenderFillRect(renderer, &data_ptr->sortMemoryButton);      // draws sort by memory button
     drawText(renderer, data_ptr->font, "Sort by Memory Usage", 55, 80, white);      // sort by memory button text
 
-    SDL_SetRenderDrawColor(renderer, gray);    // initializes renderer color
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);    // initializes renderer color
     SDL_RenderFillRect(renderer, &data_ptr->sortPidButton);      // draws sort by PID button
-    drawText(renderer, data_ptr->font, "Sort by PID Usage", 260, 80, white);      // sort by PID button text
+    drawText(renderer, data_ptr->font, "Sort by PID", 365, 80, white);      // sort by PID button text
 
-    SDL_SetRenderDrawColor(renderer, black);    // initializes renderer color
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);    // initializes renderer color
     SDL_RenderDrawLine(renderer, 40, 130, 850, 130);    // draws separating line
 
-    drawText(renderer, data->font, "PID", 50, 145, black);      // PID column
-    drawText(renderer, data->font, "Process Name", 150, 145, black);    // proc name column
-    drawText(renderer, data->font, "Memory Usage", 500, 145, black);    // memory usage column
+    drawText(renderer, data_ptr->font, "PID", 50, 145, yellow);      // PID column
+    drawText(renderer, data_ptr->font, "Process Name", 150, 145, yellow);    // proc name column
+    drawText(renderer, data_ptr->font, "Memory Usage", 500, 145, yellow);    // memory usage column
+
+    // draws a deorative square
+    for (int y = 0; y < 80; y++)
+    {
+        float t = (float)y / 80;
+
+        Uint8 r = (1 - t) * orange.r + t * yellow.r;
+        Uint8 g = (1 - t) * orange.g + t * yellow.g;
+
+        SDL_SetRenderDrawColor(renderer, r, g, 0, 255);
+        SDL_RenderDrawLine(renderer, 720, 40 + y, 800, 40 + y);
+    }
 
     int Ystart = 180 - data_ptr->scroll_offset;     // y starting position
     int rowHeight = 32;
     long maxMemory = 1;     // proc with highest RAM usage found
 
-    for (const ProcessEntry& proc : data->processes)
+    for (const ProcEntry& proc : data_ptr->processes)
     {
-        if (proc.memory > maxMemory) maxMemory = proc.memory     // recursively finds next largest memory usage
+        if (proc.memUse > maxMemory) maxMemory = proc.memUse;       // recursively finds next largest memory usage
     }
 
     // draws every process row
     for (int i = 0; i < data_ptr->processes.size(); i++)
     {
-        int y = start_y + i * row_height; // Row vertical position
+        int y = Ystart + i * rowHeight; // Row vertical position
 
         if (y < 160 || y > (HEIGHT - 40)) continue;     // skips off-screen rows
 
-        ProcessEntry proc = data->processes[i]; // current process
-        SDL_Rect row = {40, y, 810, 28 }; // row rectangle
-        SDL_SetRenderDrawColor(renderer, white);
+        ProcEntry proc = data_ptr->processes[i]; // current process
+        SDL_Rect row = {40, y, 860, 28 }; // row rectangle
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);     // initializes renderer color
         SDL_RenderFillRect(renderer, &row);     // draws row background
-        drawText(renderer, data->font, std::to_string(proc.pid), 50, y + 4, black);     // draws PID
-        drawText(renderer, data->font, proc.name, 150, y + 4, black);       // draws proc name
+        drawText(renderer, data_ptr->font, std::to_string(proc.pid), 50, y + 4, black);     // draws PID
+        drawText(renderer, data_ptr->font, proc.name, 150, y + 4, black);       // draws proc name
         int barWidth = 0;
 
-        if (maxMemory > 0) barWidth = (int)((proc.memory / (double)maxMemory) * 250);       // scales memory bar width
+        if (maxMemory > 0) barWidth = (int)((proc.memUse / (double)maxMemory) * 250);       // scales memory bar width
 
         // draws memory bar background
         SDL_Rect memBarBackground = {500, y + 7, 250, 14};
-        SDL_SetRenderDrawColor(renderer, lightGray);
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
         SDL_RenderFillRect(renderer, &memBarBackground);
 
         // draws actual memory bar
         SDL_Rect memBar = {500, y + 7, barWidth, 14};
-        SDL_SetRenderDrawColor(renderer, blue);
+        SDL_SetRenderDrawColor(renderer, 255, 128, 0, 255);
         SDL_RenderFillRect(renderer, &memBar);
 
-        std::string memText = std::to_string(proc.memory) + " KB";      // converts memory usage to string
+        std::string memText = std::to_string(proc.memUse) + " KB";      // converts memory usage to string
         drawText(renderer, data_ptr->font, memText, 765, y + 4, black);     // draw memory usage text
     }
 
@@ -336,7 +361,7 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
 //     }
 // }
 
-void listProcesses(std::vector<ProcessEntry*> &processes)
+void listProcesses(std::vector<ProcEntry> &processes, bool sort_by_memory)
 {
     // Clear out old data
     processes.clear();
@@ -366,10 +391,10 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
 
         if (!status_file) continue;     // skips non-status files
 
-        ProcessEntry proc;  // default process object
+        ProcEntry proc;  // default process object
         proc.pid = pid;     // default pid
         proc.name = "[]";   // name placeholder
-        proc.memory = 0;    // memory usage in KB
+        proc.memUse = 0;    // memory usage in KB
 
         std::string line;
 
@@ -386,7 +411,7 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
             else if (line.rfind("VmRSS:", 0) == 0)
             {
                 std::stringstream ss(line.substr(6));
-                ss >> proc.memory;
+                ss >> proc.memUse;
             }
         }
 
@@ -408,7 +433,24 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
     //         entries.push_back(file_entry);
     //     }
     // }
-    // std::sort(entries.begin(), entries.end(), compareFileEntries);
+    }
+
+    if (sort_by_memory)
+    {
+        std::sort(processes.begin(), processes.end(),
+            [](const ProcEntry& a, const ProcEntry& b)
+            {
+                return a.memUse > b.memUse;
+            });
+    }
+    
+    else
+    {
+        std::sort(processes.begin(), processes.end(),
+            [](const ProcEntry& a, const ProcEntry& b)
+            {
+                return a.pid < b.pid;
+            });
     }
 }
 
@@ -445,13 +487,13 @@ void quit(AppData *data_ptr)
     TTF_CloseFont(data_ptr->font);      // no files or textures needed for this
 }
 
-void update(Appdata *data_ptr)
+void update(AppData *data_ptr)
 {
     Uint32 current_time = SDL_GetTicks();
-    if (current_time - data_ptr->last_update_time >= 500)   // if >= 500 ticks since last update, update
+    if (current_time - data_ptr->last_update >= 500)   // if >= 500 ticks since last update, update
     {
-        listProcesses(data_ptr->processes);     // relist (refresh) processes
-        data_ptr->last_update_time = current_time;      // update last update time to now
+        listProcesses(data_ptr->processes, data_ptr->sort_by_memory);     // relist (refresh) processes
+        data_ptr->last_update = current_time;      // update last update time to now
     }
 }
 
