@@ -199,6 +199,70 @@ void render(SDL_Renderer *renderer, AppData *data_ptr)
     SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
     SDL_RenderClear(renderer);
 
+    SDL_Color black = {0, 0, 0, 255};
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Color gray = {100, 100, 100, 255};
+    SDL_Color lightGray = {200, 200, 200, 255};
+    SDL_Color blue = {0, 0, 255, 255};
+    SDL_Color purple = {128, 0 ,255, 255};
+
+    drawText(renderer, data_ptr->font, "Task Manager", 40, 25, black);
+
+    SDL_SetRenderDrawColor(renderer, gray);    // initializes renderer color
+    SDL_RenderFillRect(renderer, &data_ptr->sortMemoryButton);      // draws sort by memory button
+    drawText(renderer, data_ptr->font, "Sort by Memory Usage", 55, 80, white);      // sort by memory button text
+
+    SDL_SetRenderDrawColor(renderer, gray);    // initializes renderer color
+    SDL_RenderFillRect(renderer, &data_ptr->sortPidButton);      // draws sort by PID button
+    drawText(renderer, data_ptr->font, "Sort by PID Usage", 260, 80, white);      // sort by PID button text
+
+    SDL_SetRenderDrawColor(renderer, black);    // initializes renderer color
+    SDL_RenderDrawLine(renderer, 40, 130, 850, 130);    // draws separating line
+
+    drawText(renderer, data->font, "PID", 50, 145, black);      // PID column
+    drawText(renderer, data->font, "Process Name", 150, 145, black);    // proc name column
+    drawText(renderer, data->font, "Memory Usage", 500, 145, black);    // memory usage column
+
+    int Ystart = 180 - data_ptr->scroll_offset;     // y starting position
+    int rowHeight = 32;
+    long maxMemory = 1;     // proc with highest RAM usage found
+
+    for (const ProcessEntry& proc : data->processes)
+    {
+        if (proc.memory > maxMemory) maxMemory = proc.memory     // recursively finds next largest memory usage
+    }
+
+    // draws every process row
+    for (int i = 0; i < data_ptr->processes.size(); i++)
+    {
+        int y = start_y + i * row_height; // Row vertical position
+
+        if (y < 160 || y > (HEIGHT - 40)) continue;     // skips off-screen rows
+
+        ProcessEntry proc = data->processes[i]; // current process
+        SDL_Rect row = {40, y, 810, 28 }; // row rectangle
+        SDL_SetRenderDrawColor(renderer, white);
+        SDL_RenderFillRect(renderer, &row);     // draws row background
+        drawText(renderer, data->font, std::to_string(proc.pid), 50, y + 4, black);     // draws PID
+        drawText(renderer, data->font, proc.name, 150, y + 4, black);       // draws proc name
+        int barWidth = 0;
+
+        if (maxMemory > 0) barWidth = (int)((proc.memory / (double)maxMemory) * 250);       // scales memory bar width
+
+        // draws memory bar background
+        SDL_Rect memBarBackground = {500, y + 7, 250, 14};
+        SDL_SetRenderDrawColor(renderer, lightGray);
+        SDL_RenderFillRect(renderer, &memBarBackground);
+
+        // draws actual memory bar
+        SDL_Rect memBar = {500, y + 7, barWidth, 14};
+        SDL_SetRenderDrawColor(renderer, blue);
+        SDL_RenderFillRect(renderer, &memBar);
+
+        std::string memText = std::to_string(proc.memory) + " KB";      // converts memory usage to string
+        drawText(renderer, data_ptr->font, memText, 765, y + 4, black);     // draw memory usage text
+    }
+
     // // Draw file entries
     // for (int i = 0; i < data_ptr->graphic_entries.size(); i++)
     // {
@@ -322,7 +386,7 @@ void listProcesses(std::vector<ProcessEntry*> &processes)
             else if (line.rfind("VmRSS:", 0) == 0)
             {
                 std::stringstream ss(line.substr(6));
-                ss >> proc.memory_kb;
+                ss >> proc.memory;
             }
         }
 
